@@ -233,3 +233,58 @@ def get_patron_status_report(patron_id: str) -> Dict:
         "borrowed_count": len(borrowed_books)
 
     }
+
+def pay_late_fees(patron_id: str, book_id: int, payment_gateway) -> Tuple[bool, str]:
+    """
+    Process payment for a patron's late fees using the PaymentGateway.
+    This is for Assignment 3 - Mocking/Stubbing.
+
+    Args:
+        patron_id: 6-digit library card ID
+        book_id: ID of the book to pay fees for
+        payment_gateway: Mocked PaymentGateway instance
+    """
+    if not patron_id or not patron_id.isdigit() or len(patron_id) != 6:
+        return False, "Invalid patron ID."
+
+    from database import get_book_by_id, calculate_late_fee_for_book
+    book = get_book_by_id(book_id)
+    if not book:
+        return False, "Book not found."
+
+    fee_info = calculate_late_fee_for_book(patron_id, book_id)
+    fee = fee_info.get("fee_amount", 0.0)
+
+    if fee <= 0:
+        return False, "No outstanding late fees to pay."
+
+    try:
+        payment_result = payment_gateway.process_payment(patron_id, fee)
+        if payment_result.get("status") == "success":
+            return True, f"Payment of ${fee:.2f} for '{book['title']}' completed successfully."
+        else:
+            return False, f"Payment declined: {payment_result.get('message', 'Unknown error')}"
+    except Exception as e:
+        return False, f"Payment failed due to network error: {str(e)}"
+
+
+def refund_late_fee_payment(transaction_id: str, amount: float, payment_gateway) -> Tuple[bool, str]:
+    """
+    Process a refund of late fee payments using the PaymentGateway.
+    """
+    if not transaction_id or not transaction_id.strip():
+        return False, "Invalid transaction ID."
+
+    if amount <= 0:
+        return False, "Refund amount must be greater than zero."
+    if amount > 15.0:
+        return False, "Refund amount exceeds allowed maximum of $15.00."
+
+    try:
+        refund_result = payment_gateway.refund_payment(transaction_id, amount)
+        if refund_result.get("status") == "success":
+            return True, f"Refund of ${amount:.2f} processed successfully."
+        else:
+            return False, f"Refund failed: {refund_result.get('message', 'Unknown error')}"
+    except Exception as e:
+        return False, f"Refund operation failed due to system error: {str(e)}"
